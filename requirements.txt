@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+motor
+pydantic
+PyPDF2
+pdfplumber
+python-pptx
+google-generativeai
+requests
+jinja2
+aiofiles

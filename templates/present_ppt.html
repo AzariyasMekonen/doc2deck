@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}PPT Presenter - Doc2Deck{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-black text-white">
+    <!-- Presenter Controls (hidden in fullscreen) -->
+    <div id="presenter-controls" class="bg-gray-900 p-4 border-b border-gray-700">
+        <div class="flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <a href="/view-ppt" class="text-blue-400 hover:text-blue-300">
+                    <i class="fas fa-arrow-left mr-2"></i>Back to Viewer
+                </a>
+                <span id="presenter-counter" class="text-gray-300">Slide 1 of 1</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button onclick="startPresentation()" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">
+                    <i class="fas fa-play mr-2"></i>Start Presentation
+                </button>
+                <button onclick="exitPresentation()" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700">
+                    <i class="fas fa-stop mr-2"></i>Exit
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Presentation Area -->
+    <div id="presentation-container" class="flex-1 flex items-center justify-center p-8">
+        <div id="presentation-slide" class="w-full max-w-6xl text-center">
+            <h1 class="text-5xl font-bold mb-8">Loading Presentation...</h1>
+            <p class="text-2xl text-gray-300">Please wait while we prepare your slides.</p>
+        </div>
+    </div>
+
+    <!-- Navigation Hints -->
+    <div id="nav-hints" class="fixed bottom-4 right-4 text-gray-400 text-sm">
+        <div>← → Arrow keys to navigate</div>
+        <div>F11 for fullscreen • ESC to exit</div>
+    </div>
+</div>
+
+<script>
+let presentationSlides = [];
+let currentPresentationSlide = 0;
+let isFullscreen = false;
+
+// Load presentation slides
+async function loadPresentationSlides() {
+    try {
+        const notesText = `{{ presentation.notes | safe }}`;
+        if (!notesText) {
+            document.getElementById('presentation-slide').innerHTML = `
+                <h1 class="text-5xl font-bold mb-8 text-red-400">No Presentation Available</h1>
+                <p class="text-2xl text-gray-300">Please generate notes first.</p>
+                <a href="/upload" class="inline-block mt-8 bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 text-xl">Upload PDF</a>
+            `;
+            return;
+        }
+        
+        presentationSlides = parseNotesToPresentationSlides(notesText);
+        displayPresentationSlide(0);
+        updatePresentationControls();
+    } catch (error) {
+        console.error('Error loading presentation:', error);
+    }
+}
+
+function parseNotesToPresentationSlides(notes) {
+    const sections = notes.split('##').filter(section => section.trim());
+    const slideArray = [];
+    
+    // Title slide
+    slideArray.push({
+        title: "Generated Presentation",
+        content: "Created with Doc2Deck",
+        type: "title"
+    });
+    
+    // Content slides
+    sections.forEach(section => {
+        const lines = section.trim().split('\n');
+        const title = lines[0].trim();
+        const content = lines.slice(1).join('\n').trim();
+        
+        if (title && content) {
+            // Split long content into bullet points
+            const bullets = content.split('.').filter(bullet => bullet.trim().length > 10);
+            
+            slideArray.push({
+                title: title,
+                content: bullets.slice(0, 5), // Max 5 bullets per slide
+                type: "content"
+            });
+        }
+    });
+    
+    return slideArray;
+}
+
+function displayPresentationSlide(index) {
+    if (index < 0 || index >= presentationSlides.length) return;
+    
+    const slide = presentationSlides[index];
+    const slideElement = document.getElementById('presentation-slide');
+    
+    if (slide.type === "title") {
+        slideElement.innerHTML = `
+            <h1 class="text-6xl font-bold mb-12 text-blue-400">${slide.title}</h1>
+            <p class="text-3xl text-gray-300">${slide.content}</p>
+        `;
+    } else {
+        let contentHtml = '';
+        if (Array.isArray(slide.content)) {
+            contentHtml = slide.content.map(bullet => 
+                `<li class="text-2xl mb-4 text-left">${bullet.trim()}.</li>`
+            ).join('');
+            contentHtml = `<ul class="space-y-4 max-w-4xl mx-auto">${contentHtml}</ul>`;
+        } else {
+            contentHtml = `<p class="text-2xl text-gray-300 max-w-4xl mx-auto leading-relaxed">${slide.content}</p>`;
+        }
+        
+        slideElement.innerHTML = `
+            <h1 class="text-5xl font-bold mb-12 text-blue-400">${slide.title}</h1>
+            ${contentHtml}
+        `;
+    }
+    
+    currentPresentationSlide = index;
+    updatePresentationControls();
+}
+
+function updatePresentationControls() {
+    document.getElementById('presenter-counter').textContent = 
+        `Slide ${currentPresentationSlide + 1} of ${presentationSlides.length}`;
+}
+
+function previousPresentationSlide() {
+    if (currentPresentationSlide > 0) {
+        displayPresentationSlide(currentPresentationSlide - 1);
+    }
+}
+
+function nextPresentationSlide() {
+    if (currentPresentationSlide < presentationSlides.length - 1) {
+        displayPresentationSlide(currentPresentationSlide + 1);
+    }
+}
+
+function startPresentation() {
+    const container = document.documentElement;
+    if (container.requestFullscreen) {
+        container.requestFullscreen();
+    }
+    document.getElementById('presenter-controls').style.display = 'none';
+    document.getElementById('nav-hints').style.display = 'block';
+    isFullscreen = true;
+}
+
+function exitPresentation() {
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    }
+    document.getElementById('presenter-controls').style.display = 'block';
+    document.getElementById('nav-hints').style.display = 'block';
+    isFullscreen = false;
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        previousPresentationSlide();
+    }
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        nextPresentationSlide();
+    }
+    if (e.key === 'Escape') {
+        exitPresentation();
+    }
+    if (e.key === 'F11') {
+        e.preventDefault();
+        startPresentation();
+    }
+});
+
+// Handle fullscreen changes
+document.addEventListener('fullscreenchange', function() {
+    if (!document.fullscreenElement) {
+        exitPresentation();
+    }
+});
+
+// Load slides on page load
+window.onload = loadPresentationSlides;
+</script>
+
+<style>
+#presentation-container {
+    background: linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%);
+    min-height: calc(100vh - 80px);
+}
+
+#presentation-slide {
+    animation: slideIn 0.3s ease-in-out;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+/* Hide controls in fullscreen */
+:fullscreen #presenter-controls {
+    display: none !important;
+}
+
+:fullscreen #presentation-container {
+    min-height: 100vh;
+}
+</style>
+{% endblock %}
